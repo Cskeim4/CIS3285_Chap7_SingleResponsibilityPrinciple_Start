@@ -15,7 +15,8 @@ namespace SingleResponsibilityPrinciple
         public void ProcessTrades(Stream stream)
         {
             IEnumerable<string> lines;
-            //Call ReadTradeDate method
+
+            //Call ReadTradeData method
             lines = ReadTradeData(stream);
 
             //Call ParseTrades method
@@ -24,6 +25,24 @@ namespace SingleResponsibilityPrinciple
             //Call StoreTrades method
             StoreTrades(trades);
 
+        }
+
+        //Reads the trade data from the stream
+        private IEnumerable<string> ReadTradeData(Stream stream)
+        {
+            // read rows
+            var lines = new List<string>();
+
+            using (var reader = new StreamReader(stream))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    lines.Add(line);
+                }
+            }
+
+            return lines;
         }
 
         //Parse data into parts read in from trades
@@ -43,62 +62,13 @@ namespace SingleResponsibilityPrinciple
                     //Calculate the values
                     TradeRecord trade = MapTradeDataToTradeRecord(fields);
                     trades.Add(trade);
-                    
+
                 }
 
                 lineCount++;
             }
 
             return trades;
-        }
-
-        //Reads the trade data from the stream
-        private IEnumerable<string> ReadTradeData(Stream stream)
-        {
-            // read rows
-            var lines = new List<string>();
-            using (var reader = new StreamReader(stream))
-            {
-                string line;
-                while ((line = reader.ReadLine()) != null)
-                {
-                    lines.Add(line);
-                }
-            }
-
-            return lines;
-        }
-
-        //Store trade records in a database
-        private void StoreTrades(List<TradeRecord> trades)
-        {
-            using (var connection = new System.Data.SqlClient.SqlConnection("Data Source=(local);Initial Catalog=TradeDatabase;Integrated Security=True;"))
-            {
-                connection.Open();
-                using (var transaction = connection.BeginTransaction())
-                {
-                    foreach (var trade in trades)
-                    {
-                        //Create the command
-                        var command = connection.CreateCommand();
-                        command.Transaction = transaction;
-                        command.CommandType = System.Data.CommandType.StoredProcedure;
-                        command.CommandText = "dbo.insert_trade";
-                        //Add parameters separately to protect against SQL injection
-                        command.Parameters.AddWithValue("@sourceCurrency", trade.SourceCurrency);
-                        command.Parameters.AddWithValue("@destinationCurrency", trade.DestinationCurrency);
-                        command.Parameters.AddWithValue("@lots", trade.Lots);
-                        command.Parameters.AddWithValue("@price", trade.Price);
-
-                        command.ExecuteNonQuery();
-                    }
-
-                    transaction.Commit();
-                }
-                connection.Close();
-
-                Console.WriteLine("INFO: {0} trades processed", trades.Count);
-            }
         }
 
         //Validate text line
@@ -136,6 +106,12 @@ namespace SingleResponsibilityPrinciple
             return true;
         }
 
+        //Pull out console write lines, and call log message to send the messages to a log(file)
+        private void LogMessage(string message, params object[] args)
+        {
+            Console.WriteLine(message, args);
+        }
+
         private TradeRecord MapTradeDataToTradeRecord(string[] fields)
         {
             string sourceCurrencyCode = fields[0].Substring(0, 3);
@@ -155,13 +131,38 @@ namespace SingleResponsibilityPrinciple
             return tradeRec;
         }
 
-        //Pull out console write lines, and call log message to send the messages to a log(file)
-        private void LogMessage(string message, params object[] args)
+        //Store trade records in a database
+        private void StoreTrades(List<TradeRecord> trades)
         {
-            Console.WriteLine(message, args);
+            using (var connection = new System.Data.SqlClient.SqlConnection("Data Source=(local);Initial Catalog=TradeDatabase;Integrated Security=True;"))
+            {
+                connection.Open();
+                using (var transaction = connection.BeginTransaction())
+                {
+                    foreach (var trade in trades)
+                    {
+                        //Create the command
+                        var command = connection.CreateCommand();
+                        command.Transaction = transaction;
+                        command.CommandType = System.Data.CommandType.StoredProcedure;
+                        command.CommandText = "dbo.insert_trade";
+                        //Add parameters separately to protect against SQL injection
+                        command.Parameters.AddWithValue("@sourceCurrency", trade.SourceCurrency);
+                        command.Parameters.AddWithValue("@destinationCurrency", trade.DestinationCurrency);
+                        command.Parameters.AddWithValue("@lots", trade.Lots);
+                        command.Parameters.AddWithValue("@price", trade.Price);
+
+                        command.ExecuteNonQuery();
+                    }
+
+                    transaction.Commit();
+                }
+                connection.Close();
+
+                Console.WriteLine("INFO: {0} trades processed", trades.Count);
+            }
         }
 
         private static float LotSize = 100000f;
     }
-
 }
